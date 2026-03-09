@@ -1,0 +1,43 @@
+{
+  "name": "notion-sync",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Daily Codex and terminal log sync to Notion with encrypted local state.",
+  "author": "Josef",
+  "license": "MIT",
+  "homepage": "https://github.com/jozrftamson/notion-sync-web-",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jozrftamson/notion-sync-web-.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jozrftamson/notion-sync-web-/issues"
+  },
+  "files": [
+    "daily-upload.js",
+    "README.md",
+    ".env.example",
+    "LICENSE"
+  ],
+  "keywords": [
+    "notion",
+    "cli",
+    "terminal",
+    "logs",
+    "codex"
+  ],
+  "bin": {
+    "notion-sync": "./daily-upload.js"
+  },
+  "scripts": {
+    "help": "node daily-upload.js --help",
+    "init": "node daily-upload.js --init",
+    "doctor": "node daily-upload.js --doctor",
+    "run": "node daily-upload.js",
+    "dry-run": "node daily-upload.js --dry-run",
+    "status": "node daily-upload.js --status",
+    "report": "node daily-upload.js --report",
+    "open": "node daily-upload.js --open",
+    "remote": "node daily-upload.js --remote"
+  }
+}
