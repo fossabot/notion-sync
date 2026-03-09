@@ -1,5 +1,5 @@
 {
-  "name": "@jozrftamson/notion-sync",
+  "name": "@joseftmson/notion-sync",
   "version": "1.0.0",
   "type": "commonjs",
   "description": "Daily Codex and terminal log sync to Notion with encrypted local state.",
