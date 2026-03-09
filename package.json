@@ -5,13 +5,13 @@
   "description": "Daily Codex and terminal log sync to Notion with encrypted local state.",
   "author": "Josef",
   "license": "MIT",
-  "homepage": "https://github.com/jozrftamson/notion-sync-web-",
+  "homepage": "https://github.com/jozrftamson/notion-sync",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jozrftamson/notion-sync-web-.git"
+    "url": "git+https://github.com/jozrftamson/notion-sync.git"
   },
   "bugs": {
-    "url": "https://github.com/jozrftamson/notion-sync-web-/issues"
+    "url": "https://github.com/jozrftamson/notion-sync/issues"
   },
   "files": [
     "daily-upload.js",
@@ -27,7 +27,7 @@
     "codex"
   ],
   "bin": {
-    "notion-sync": "./daily-upload.js"
+    "notion-sync": "daily-upload.js"
   },
   "scripts": {
     "help": "node daily-upload.js --help",
