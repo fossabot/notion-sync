@@ -824,9 +824,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildReport,
+  collectSummaryText,
   normalizeCommand,
   sanitizeText,
   stripAnsi,
   initializeEnvFile,
   runDoctor,
+  uploadReportToRemote,
 };

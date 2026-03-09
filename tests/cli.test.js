@@ -1,5 +1,6 @@
 const assert = require("assert");
 const fs = require("fs");
+const http = require("http");
 const os = require("os");
 const path = require("path");
 
@@ -8,7 +9,13 @@ process.env.NOTION_DATABASE_ID = "db_test";
 process.env.ENCRYPTION_KEY = "encryption_test_value";
 process.env.NOTION_SYNC_STATE_FILE = path.join(os.tmpdir(), "notion-sync-test-state.json");
 
-const cli = require("../daily-upload.js");
+let cli = require("../daily-upload.js");
+
+function loadCli() {
+  delete require.cache[require.resolve("../daily-upload.js")];
+  cli = require("../daily-upload.js");
+  return cli;
+}
 
 function testNormalizeCommand() {
   assert.equal(cli.normalizeCommand([]), "run");
@@ -51,10 +58,61 @@ function testDoctorShape() {
   assert.ok(report.checks.some((check) => check.name === "paths.stateFile"));
 }
 
-testNormalizeCommand();
-testSanitizeText();
-testStripAnsi();
-testInitializeEnvFile();
-testDoctorShape();
+async function testRemoteUploadFlow() {
+  process.env.NOTION_SYNC_API_URL = "http://127.0.0.1:45231/api/sync";
+  process.env.NOTION_SYNC_USER_LABEL = "integration-user";
+  process.env.NOTION_SYNC_SOURCE = "integration-test";
+  const cliWithRemote = loadCli();
 
-console.log("cli.test.js passed");
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      const payload = JSON.parse(body);
+      assert.equal(payload.userLabel, "integration-user");
+      assert.equal(payload.source, "integration-test");
+      assert.match(payload.summary, /Codex entries/);
+      assert.match(payload.codexText, /rollout-1\.jsonl/);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, pageId: "page_123", url: "https://example.com/page_123" }));
+    });
+  });
+
+  await new Promise((resolve) => server.listen(45231, "127.0.0.1", resolve));
+
+  try {
+    const report = cliWithRemote.buildReport(
+      "2026-03-09",
+      [{ source: "rollout-1.jsonl", timestamp: "2026-03-09T10:00:00Z", text: "assistant: synced output" }],
+      [{ source: "session.log", timestamp: null, text: "build completed" }],
+      [{ source: "bash_history", timestamp: "new-1", text: "npm test" }]
+    );
+
+    const result = await cliWithRemote.uploadReportToRemote(report);
+    assert.equal(result.pageId, "page_123");
+    assert.equal(result.url, "https://example.com/page_123");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    delete process.env.NOTION_SYNC_API_URL;
+    delete process.env.NOTION_SYNC_USER_LABEL;
+    delete process.env.NOTION_SYNC_SOURCE;
+    loadCli();
+  }
+}
+
+async function run() {
+  testNormalizeCommand();
+  testSanitizeText();
+  testStripAnsi();
+  testInitializeEnvFile();
+  testDoctorShape();
+  await testRemoteUploadFlow();
+  console.log("cli.test.js passed");
+}
+
+run().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
