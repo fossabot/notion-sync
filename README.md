@@ -5,7 +5,7 @@ CLI that collects daily Codex sessions and terminal logs, masks common secrets, 
 ## Install
 
 ```bash
-npm install -g notion-sync
+npm install -g @jozrftamson/notion-sync
 ```
 
 ## Setup
