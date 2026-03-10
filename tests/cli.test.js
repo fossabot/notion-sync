@@ -64,6 +64,7 @@ function testExportCodexSession() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "notion-sync-export-"));
   const inputFile = path.join(tempDir, "session.jsonl");
   const outputFile = path.join(tempDir, "session.md");
+  const outputDir = path.join(tempDir, "exports");
   fs.writeFileSync(
     inputFile,
     [
@@ -91,6 +92,10 @@ function testExportCodexSession() {
   assert.match(content, /Hallo Welt/);
   assert.match(content, /Antwort Text/);
   assert.equal(result.title, "Codex Session Export session");
+
+  const resultWithOutputDir = cli.exportCodexSession([inputFile, "--output-dir", outputDir]);
+  assert.equal(resultWithOutputDir.outputPath, path.join(outputDir, "session.md"));
+  assert.ok(fs.existsSync(resultWithOutputDir.outputPath));
 }
 
 function testExportLatestCodexSession() {
@@ -125,6 +130,35 @@ function testExportLatestCodexSession() {
   assert.equal(result.outputPath, outputFile);
   assert.equal(result.count, 1);
   assert.match(fs.readFileSync(outputFile, "utf8"), /neu/);
+
+  delete process.env.CODEX_SESSIONS_DIR;
+  loadCli();
+}
+
+function testExportLatestCodexSessionBatch() {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "notion-sync-export-latest-batch-"));
+  const sessionsDir = path.join(tempDir, "sessions");
+  const outputDir = path.join(tempDir, "exports");
+  fs.mkdirSync(path.join(sessionsDir, "2026", "03", "09"), { recursive: true });
+  const fileA = path.join(sessionsDir, "2026", "03", "09", "rollout-2026-03-09T09-00-00.jsonl");
+  const fileB = path.join(sessionsDir, "2026", "03", "09", "rollout-2026-03-09T10-00-00.jsonl");
+  const fileC = path.join(sessionsDir, "2026", "03", "09", "rollout-2026-03-09T11-00-00.jsonl");
+  fs.writeFileSync(fileA, JSON.stringify({ type: "event_msg", timestamp: "2026-03-09T09:00:00.000Z", payload: { type: "user_message", message: "eins" } }) + "\n");
+  fs.writeFileSync(fileB, JSON.stringify({ type: "event_msg", timestamp: "2026-03-09T10:00:00.000Z", payload: { type: "user_message", message: "zwei" } }) + "\n");
+  fs.writeFileSync(fileC, JSON.stringify({ type: "event_msg", timestamp: "2026-03-09T11:00:00.000Z", payload: { type: "user_message", message: "drei" } }) + "\n");
+
+  process.env.CODEX_SESSIONS_DIR = sessionsDir;
+  const cliWithSessions = loadCli();
+  const result = cliWithSessions.exportLatestCodexSession(["--latest", "2", "--output-dir", outputDir]);
+
+  assert.equal(result.inputPaths.length, 2);
+  assert.equal(result.inputPaths[0], fileB);
+  assert.equal(result.inputPaths[1], fileC);
+  assert.match(result.outputPath, /batch\.md$/);
+  assert.ok(fs.existsSync(result.outputPath));
+  const content = fs.readFileSync(result.outputPath, "utf8");
+  assert.match(content, /zwei/);
+  assert.match(content, /drei/);
 
   delete process.env.CODEX_SESSIONS_DIR;
   loadCli();
@@ -235,6 +269,7 @@ async function run() {
   testDoctorShape();
   testExportCodexSession();
   testExportLatestCodexSession();
+  testExportLatestCodexSessionBatch();
   testBuildCodexExportBlocks();
   await testRemoteUploadFlow();
   await testRemoteCodexExportFlow();
