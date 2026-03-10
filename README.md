@@ -118,6 +118,7 @@ notion-sync remote
 notion-sync export-codex ~/.codex/sessions/2026/03/09/session.jsonl --output ./exports/session.md
 notion-sync export-codex-latest --output ./exports/latest-session.md
 notion-sync export-codex-latest --send-to-notion
+notion-sync export-codex-latest --send-remote
 ```
 
 ## Codex session export
@@ -129,6 +130,7 @@ notion-sync export-codex ~/.codex/sessions/2026/03/08/session.jsonl
 notion-sync export-codex session.jsonl --format text --output ./session.txt
 notion-sync export-codex-latest --output ./latest-session.md
 notion-sync export-codex-latest --send-to-notion
+notion-sync export-codex-latest --send-remote
 ```
 
 This is useful when you want a human-readable chronology before sending the content to Notion.

@@ -70,6 +70,13 @@ async function main() {
       console.log(`Exported ${result.count} entries to ${result.outputPath} and uploaded to ${getNotionPageUrl(pageId)}`);
       return;
     }
+    if (result.sendRemote) {
+      const remoteResult = await uploadCodexExportToRemote(result);
+      console.log(
+        `Exported ${result.count} entries to ${result.outputPath} and sent to remote ${remoteResult.url || "(no url returned)"}`
+      );
+      return;
+    }
     console.log(`Exported ${result.count} entries to ${result.outputPath}`);
     return;
   }
@@ -81,6 +88,13 @@ async function main() {
       const pageId = await uploadCodexExportToNotion(result);
       console.log(
         `Exported ${result.count} entries from ${result.inputPath} to ${result.outputPath} and uploaded to ${getNotionPageUrl(pageId)}`
+      );
+      return;
+    }
+    if (result.sendRemote) {
+      const remoteResult = await uploadCodexExportToRemote(result);
+      console.log(
+        `Exported ${result.count} entries from ${result.inputPath} to ${result.outputPath} and sent to remote ${remoteResult.url || "(no url returned)"}`
       );
       return;
     }
@@ -183,8 +197,8 @@ function getHelpText() {
     "  notion-sync report   Preview the next upload in the terminal",
     "  notion-sync open     Print the last synced Notion page URL",
     "  notion-sync remote   Send the current report to a remote API",
-    "  notion-sync export-codex <session.jsonl> [--output file] [--format markdown|text] [--roles user,assistant] [--send-to-notion]",
-    "  notion-sync export-codex-latest [--output file] [--format markdown|text] [--roles user,assistant] [--send-to-notion]",
+    "  notion-sync export-codex <session.jsonl> [--output file] [--format markdown|text] [--roles user,assistant] [--send-to-notion|--send-remote]",
+    "  notion-sync export-codex-latest [--output file] [--format markdown|text] [--roles user,assistant] [--send-to-notion|--send-remote]",
     "  notion-sync dry-run  Build the next report without uploading",
     "  notion-sync run      Upload the next report to Notion",
     "",
@@ -841,6 +855,7 @@ function exportCodexSession(argv) {
   if (options.help || !options.input) {
     throw new Error(
       "Usage: notion-sync export-codex <session.jsonl> [--output file] [--format markdown|text] [--roles user,assistant] [--send-to-notion]"
+        .replace("[--send-to-notion]", "[--send-to-notion|--send-remote]")
     );
   }
 
@@ -881,6 +896,7 @@ function exportCodexSession(argv) {
     format: options.format,
     rendered,
     sendToNotion: Boolean(options.sendToNotion),
+    sendRemote: Boolean(options.sendRemote),
     title: options.title || buildCodexExportTitle(inputPath),
   };
 }
@@ -927,6 +943,10 @@ function parseCodexExportArgs(argv) {
     }
     if (arg === "--send-to-notion") {
       options.sendToNotion = true;
+      continue;
+    }
+    if (arg === "--send-remote") {
+      options.sendRemote = true;
       continue;
     }
     if (arg === "--title") {
@@ -1077,6 +1097,37 @@ async function uploadCodexExportToNotion(result) {
   return page.id;
 }
 
+async function uploadCodexExportToRemote(result) {
+  if (!CONFIG.remoteApiUrl) {
+    throw new Error("Missing NOTION_SYNC_API_URL for remote upload.");
+  }
+
+  const payload = {
+    title: result.title,
+    userLabel: CONFIG.remoteUserLabel,
+    source: CONFIG.remoteSource,
+    summary: `Codex export entries: ${result.count}`,
+    codexText: result.rendered,
+    terminalText: "",
+    shellText: "",
+  };
+
+  const response = await fetch(CONFIG.remoteApiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const remoteResult = await response.json().catch(() => ({}));
+  if (!response.ok || !remoteResult.ok) {
+    throw new Error(remoteResult.error || `Remote upload failed (${response.status}).`);
+  }
+
+  return remoteResult;
+}
+
 function checkPath(name, targetPath) {
   return {
     name,
@@ -1112,4 +1163,5 @@ module.exports = {
   exportCodexSession,
   exportLatestCodexSession,
   buildCodexExportBlocks,
+  uploadCodexExportToRemote,
 };

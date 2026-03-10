@@ -142,6 +142,47 @@ function testBuildCodexExportBlocks() {
   assert.equal(blocks[2].type, "heading_2");
 }
 
+async function testRemoteCodexExportFlow() {
+  process.env.NOTION_SYNC_API_URL = "http://127.0.0.1:45232/api/sync";
+  process.env.NOTION_SYNC_USER_LABEL = "integration-user";
+  process.env.NOTION_SYNC_SOURCE = "integration-test";
+  const cliWithRemote = loadCli();
+
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      const payload = JSON.parse(body);
+      assert.equal(payload.userLabel, "integration-user");
+      assert.equal(payload.source, "integration-test");
+      assert.match(payload.summary, /Codex export entries: 2/);
+      assert.match(payload.codexText, /Codex Session Export/);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, pageId: "page_export_123", url: "https://example.com/page_export_123" }));
+    });
+  });
+
+  await new Promise((resolve) => server.listen(45232, "127.0.0.1", resolve));
+
+  try {
+    const result = await cliWithRemote.uploadCodexExportToRemote({
+      title: "Codex Session Export sample",
+      count: 2,
+      rendered: "# Codex Session Export\n\nHallo",
+    });
+    assert.equal(result.pageId, "page_export_123");
+    assert.equal(result.url, "https://example.com/page_export_123");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    delete process.env.NOTION_SYNC_API_URL;
+    delete process.env.NOTION_SYNC_USER_LABEL;
+    delete process.env.NOTION_SYNC_SOURCE;
+    loadCli();
+  }
+}
+
 async function testRemoteUploadFlow() {
   process.env.NOTION_SYNC_API_URL = "http://127.0.0.1:45231/api/sync";
   process.env.NOTION_SYNC_USER_LABEL = "integration-user";
@@ -196,6 +237,7 @@ async function run() {
   testExportLatestCodexSession();
   testBuildCodexExportBlocks();
   await testRemoteUploadFlow();
+  await testRemoteCodexExportFlow();
   console.log("cli.test.js passed");
 }
 
