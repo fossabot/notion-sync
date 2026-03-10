@@ -1,8 +1,32 @@
 #!/usr/bin/env node
-const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const {
+  exportCodexSession: runCodexExport,
+  exportLatestCodexSession: runLatestCodexExport,
+} = require("./lib/codex-export");
+const {
+  upsertDailyPage: upsertDailyPageCore,
+  uploadCodexExportToNotion: uploadCodexExportToNotionCore,
+  createNotionRequest,
+  createBlocks: createNotionBlocks,
+  buildCodexExportBlocks: buildCodexExportBlocksCore,
+  headingBlock,
+  paragraphBlock,
+  chunkText,
+} = require("./lib/notion");
+const {
+  uploadReportToRemote: uploadReportToRemoteCore,
+  uploadCodexExportToRemote: uploadCodexExportToRemoteCore,
+  collectSummaryText,
+} = require("./lib/remote");
+const {
+  buildReport: buildReportCore,
+  sanitizeText,
+  stripAnsi,
+  renderReportPreview,
+} = require("./lib/report");
 
 loadEnv(path.join(__dirname, ".env"));
 
@@ -45,6 +69,7 @@ const SECRET_PATTERNS = [
   /OPENAI_API_KEY\s*=\s*.+/g,
   /CLIENT_KEY_[A-Za-z0-9_]*\s*=\s*.+/g,
 ];
+const notionRequest = createNotionRequest(CONFIG);
 
 async function main() {
   if (HELP_ONLY) {
@@ -376,7 +401,7 @@ function collectCodexEntries(reportDate, progressState) {
         entries.push({
           source: path.basename(file),
           timestamp: item.timestamp || null,
-          text: sanitizeText(text),
+          text: sanitizeText(text, SECRET_PATTERNS),
         });
       } catch {
         continue;
@@ -428,7 +453,7 @@ function collectTerminalEntries(reportDate, progressState) {
       entries.push({
         source: file,
         timestamp: null,
-        text: sanitizeText(stripAnsi(delta)).slice(0, 8000),
+        text: sanitizeText(stripAnsi(delta), SECRET_PATTERNS).slice(0, 8000),
       });
     }
     nextProgress[file] = {
@@ -450,7 +475,7 @@ function collectShellEntries(progressState) {
   const entries = lines.slice(startIndex).map((line, index) => ({
     source: "bash_history",
     timestamp: `new-${startIndex + index + 1}`,
-    text: sanitizeText(line),
+    text: sanitizeText(line, SECRET_PATTERNS),
   }));
   return {
     entries,
@@ -461,287 +486,19 @@ function collectShellEntries(progressState) {
 }
 
 function buildReport(reportDate, codexEntries, terminalEntries, shellEntries) {
-  const codexSummary = summarizeEntries(codexEntries, 12);
-  const terminalSummary = summarizeEntries(terminalEntries, 8);
-  const shellSummary = summarizeEntries(shellEntries, 20);
-  const codexText = codexSummary.join("\n").slice(0, 4000);
-  const terminalText = terminalSummary.join("\n").slice(0, 4000);
-  const shellText = shellSummary.join("\n").slice(0, 2000);
-  const summary = [
-    `Codex entries: ${codexEntries.length}`,
-    `Terminal logs: ${terminalEntries.length}`,
-    `Shell commands captured: ${shellEntries.length}`,
-  ].join(" | ");
-
-  const blocks = createBlocks([
-    `Daily automation report for ${reportDate}.`,
-    summary,
-    "Codex History",
-    codexText || "No Codex session data found for this day.",
-    "Terminal Logs",
-    terminalText || "No terminal log files found for this day.",
-    "Recent Shell History",
-    shellText || "No shell history file found.",
-  ]);
-
-  return {
-    title: `Daily Codex Log ${reportDate}`,
-    reportDate,
-    blocks,
-    hasChanges: codexEntries.length > 0 || terminalEntries.length > 0 || shellEntries.length > 0,
-    preview: {
-      title: `Daily Codex Log ${reportDate}`,
-      summary,
-      codexEntries: codexEntries.length,
-      terminalEntries: terminalEntries.length,
-      shellEntries: shellEntries.length,
-    },
-    hashes: {
-      codex: sha256(codexText),
-      terminal: sha256(terminalText),
-      shell: sha256(shellText),
-    },
-  };
-}
-
-function formatEntry(entry) {
-  const prefix = entry.timestamp ? `[${entry.timestamp}] ` : "";
-  return `${prefix}${entry.source}\n${entry.text}`;
-}
-
-function summarizeEntries(entries, limit) {
-  return entries.slice(0, limit).map((entry) => {
-    const firstLine = entry.text.split("\n").find((line) => line.trim()) || "";
-    const condensed = firstLine.replace(/\s+/g, " ").slice(0, 220);
-    const prefix = entry.timestamp ? `[${entry.timestamp}] ` : "";
-    return `${prefix}${entry.source}: ${condensed}`;
-  });
-}
-
-function sanitizeText(text) {
-  let output = text;
-  for (const pattern of SECRET_PATTERNS) {
-    output = output.replace(pattern, "[REDACTED]");
-  }
-  return output;
-}
-
-function stripAnsi(text) {
-  return text.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
-}
-
-function sha256(text) {
-  return crypto.createHash("sha256").update(text).digest("hex");
+  return buildReportCore(reportDate, codexEntries, terminalEntries, shellEntries, { createBlocks });
 }
 
 function createBlocks(sections) {
-  const blocks = [];
-  for (let i = 0; i < sections.length; i += 2) {
-    const heading = sections[i];
-    const body = sections[i + 1];
-    blocks.push(headingBlock(i === 0 ? "Summary" : heading));
-    for (const chunk of chunkText(body, 1800)) {
-      blocks.push(paragraphBlock(chunk));
-    }
-  }
-  return blocks;
-}
-
-function headingBlock(text) {
-  return {
-    object: "block",
-    type: "heading_2",
-    heading_2: {
-      rich_text: [richText(text)],
-    },
-  };
-}
-
-function paragraphBlock(text) {
-  return {
-    object: "block",
-    type: "paragraph",
-    paragraph: {
-      rich_text: [richText(text)],
-    },
-  };
-}
-
-function richText(text) {
-  return {
-    type: "text",
-    text: {
-      content: text,
-    },
-  };
-}
-
-function chunkText(text, size) {
-  if (!text) {
-    return [""];
-  }
-  const chunks = [];
-  for (let index = 0; index < text.length; index += size) {
-    chunks.push(text.slice(index, index + size));
-  }
-  return chunks;
-}
-
-function renderReportPreview(report) {
-  const lines = [
-    `Title: ${report.title}`,
-    `Date: ${report.reportDate}`,
-    `Summary: ${report.preview.summary}`,
-    "",
-  ];
-
-  for (const block of report.blocks) {
-    if (block.type === "heading_2") {
-      lines.push(`## ${block.heading_2.rich_text[0].text.content}`);
-    }
-    if (block.type === "paragraph") {
-      lines.push(block.paragraph.rich_text[0].text.content);
-      lines.push("");
-    }
-  }
-
-  return lines.join("\n").trim();
+  return createNotionBlocks(sections, { headingBlock, paragraphBlock, chunkText });
 }
 
 async function uploadReportToRemote(report) {
-  if (!CONFIG.remoteApiUrl) {
-    throw new Error("Missing NOTION_SYNC_API_URL for remote upload.");
-  }
-
-  if (!report.hasChanges) {
-    return {
-      ok: true,
-      skipped: true,
-      reason: `No new entries for ${report.reportDate}.`,
-    };
-  }
-
-  const payload = {
-    title: report.title,
-    userLabel: CONFIG.remoteUserLabel,
-    source: CONFIG.remoteSource,
-    summary: report.preview.summary,
-    codexText: collectSummaryText(report, "Codex History"),
-    terminalText: collectSummaryText(report, "Terminal Logs"),
-    shellText: collectSummaryText(report, "Recent Shell History"),
-  };
-
-  const response = await fetch(CONFIG.remoteApiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || !result.ok) {
-    throw new Error(result.error || `Remote upload failed (${response.status}).`);
-  }
-
-  return result;
-}
-
-function collectSummaryText(report, headingName) {
-  const lines = [];
-  let capture = false;
-
-  for (const block of report.blocks) {
-    if (block.type === "heading_2") {
-      const heading = block.heading_2.rich_text[0].text.content;
-      capture = heading === headingName;
-      continue;
-    }
-
-    if (capture && block.type === "paragraph") {
-      const text = block.paragraph.rich_text.map((part) => part.text.content).join("");
-      lines.push(text);
-    }
-  }
-
-  return lines.join("\n").trim();
+  return uploadReportToRemoteCore(report, CONFIG, collectSummaryText);
 }
 
 async function upsertDailyPage(report) {
-  const query = await notionRequest(`/v1/databases/${CONFIG.notionDatabaseId}/query`, {
-    method: "POST",
-    body: {
-      filter: {
-        property: CONFIG.notionTitleProperty,
-        title: {
-          equals: report.title,
-        },
-      },
-    },
-  });
-
-  if (query.results?.length) {
-    return query.results[0].id;
-  }
-
-  const page = await notionRequest("/v1/pages", {
-    method: "POST",
-    body: {
-      parent: {
-        database_id: CONFIG.notionDatabaseId,
-      },
-      properties: {
-        [CONFIG.notionTitleProperty]: {
-          title: [{ text: { content: report.title } }],
-        },
-      },
-    },
-  });
-
-  return page.id;
-}
-
-async function replacePageBlocks(pageId, blocks) {
-  const existing = await notionRequest(`/v1/blocks/${pageId}/children?page_size=100`, {
-    method: "GET",
-  });
-
-  for (const block of existing.results || []) {
-    await notionRequest(`/v1/blocks/${block.id}`, {
-      method: "PATCH",
-      body: {
-        archived: true,
-      },
-    });
-  }
-
-  for (let index = 0; index < blocks.length; index += 50) {
-    await notionRequest(`/v1/blocks/${pageId}/children`, {
-      method: "PATCH",
-      body: {
-        children: blocks.slice(index, index + 50),
-      },
-    });
-  }
-}
-
-async function notionRequest(endpoint, options) {
-  const response = await fetch(`https://api.notion.com${endpoint}`, {
-    method: options.method,
-    headers: {
-      Authorization: `Bearer ${CONFIG.notionToken}`,
-      "Content-Type": "application/json",
-      "Notion-Version": "2022-06-28",
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Notion request failed (${response.status}): ${text}`);
-  }
-
-  return response.status === 204 ? {} : response.json();
+  return upsertDailyPageCore(report, CONFIG, notionRequest);
 }
 
 function walkFiles(directory) {
@@ -851,281 +608,31 @@ function runDoctor() {
 }
 
 function exportCodexSession(argv) {
-  const options = parseCodexExportArgs(argv);
-  if (options.help || !options.input) {
-    throw new Error(
-      "Usage: notion-sync export-codex <session.jsonl> [--output file] [--format markdown|text] [--roles user,assistant] [--send-to-notion]"
-        .replace("[--send-to-notion]", "[--send-to-notion|--send-remote]")
-    );
-  }
-
-  const inputPath = path.resolve(options.input);
-  const outputPath = path.resolve(options.output || buildCodexExportOutputPath(inputPath, options.format));
-  const allowedRoles = new Set(
-    (options.roles || "user,assistant")
-      .split(",")
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean)
-  );
-
-  const lines = fs.readFileSync(inputPath, "utf8").split(/\r?\n/).filter(Boolean);
-  const messages = lines
-    .map(parseCodexExportLine)
-    .filter(Boolean)
-    .flatMap(extractCodexReadableEntries)
-    .filter((item) => allowedRoles.has(item.role))
-    .filter((item) => !shouldSkipCodexExportItem(item))
-    .filter(deduplicateCodexExportAdjacent());
-
-  if (!messages.length) {
-    throw new Error("No readable Codex messages found in the provided session file.");
-  }
-
-  const rendered =
-    options.format === "text"
-      ? renderCodexExportText(inputPath, messages)
-      : renderCodexExportMarkdown(inputPath, messages);
-
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, rendered);
-  return {
-    inputPath,
-    outputPath,
-    count: messages.length,
-    messages,
-    format: options.format,
-    rendered,
-    sendToNotion: Boolean(options.sendToNotion),
-    sendRemote: Boolean(options.sendRemote),
-    title: options.title || buildCodexExportTitle(inputPath),
-  };
+  return runCodexExport(argv, { stripAnsi });
 }
 
 function exportLatestCodexSession(argv) {
-  const files = walkFiles(CONFIG.codexSessionsDir)
-    .filter((file) => file.endsWith(".jsonl"))
-    .sort();
-
-  if (!files.length) {
-    throw new Error(`No Codex session files found in ${CONFIG.codexSessionsDir}.`);
-  }
-
-  const latestFile = files[files.length - 1];
-  const result = exportCodexSession([latestFile, ...argv]);
-  return {
-    ...result,
-    inputPath: latestFile,
-  };
-}
-
-function parseCodexExportArgs(argv) {
-  const options = { format: "markdown" };
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--help" || arg === "-h") {
-      options.help = true;
-      continue;
-    }
-    if (arg === "--output" || arg === "-o") {
-      options.output = argv[index + 1];
-      index += 1;
-      continue;
-    }
-    if (arg === "--format") {
-      options.format = argv[index + 1] || "markdown";
-      index += 1;
-      continue;
-    }
-    if (arg === "--roles") {
-      options.roles = argv[index + 1] || "user,assistant";
-      index += 1;
-      continue;
-    }
-    if (arg === "--send-to-notion") {
-      options.sendToNotion = true;
-      continue;
-    }
-    if (arg === "--send-remote") {
-      options.sendRemote = true;
-      continue;
-    }
-    if (arg === "--title") {
-      options.title = argv[index + 1];
-      index += 1;
-      continue;
-    }
-    if (!options.input) {
-      options.input = arg;
-    }
-  }
-  return options;
-}
-
-function buildCodexExportTitle(inputPath) {
-  return `Codex Session Export ${path.basename(inputPath, path.extname(inputPath))}`;
-}
-
-function buildCodexExportOutputPath(inputPath, format) {
-  const ext = format === "text" ? ".txt" : ".md";
-  const base = path.basename(inputPath, path.extname(inputPath));
-  return path.join(process.cwd(), `${base}${ext}`);
-}
-
-function parseCodexExportLine(line) {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return null;
-  }
-}
-
-function extractCodexReadableEntries(entry) {
-  const timestamp = entry.timestamp || entry.payload?.timestamp || "";
-
-  if (entry.type === "event_msg" && entry.payload?.message) {
-    return [
-      {
-        timestamp,
-        role: mapCodexExportRole(entry.payload.type),
-        text: cleanCodexExportText(entry.payload.message),
-      },
-    ];
-  }
-
-  if (entry.type === "response_item" && entry.payload?.type === "message") {
-    const role = entry.payload.role || "assistant";
-    return (entry.payload.content || [])
-      .filter((part) => part.type === "input_text" || part.type === "output_text")
-      .map((part) => ({
-        timestamp,
-        role,
-        text: cleanCodexExportText(part.text),
-      }))
-      .filter((item) => item.text);
-  }
-
-  return [];
-}
-
-function mapCodexExportRole(type) {
-  if (type === "user_message") {
-    return "user";
-  }
-  if (type === "agent_message") {
-    return "assistant";
-  }
-  return type || "event";
-}
-
-function cleanCodexExportText(text) {
-  return stripAnsi(String(text || "").replace(/\r/g, "")).trim();
-}
-
-function shouldSkipCodexExportItem(item) {
-  const text = item.text.trim();
-  return (
-    text.startsWith("# AGENTS.md instructions") ||
-    text.startsWith("<environment_context>") ||
-    text.startsWith("<INSTRUCTIONS>")
-  );
-}
-
-function deduplicateCodexExportAdjacent() {
-  let previous = null;
-  return (item) => {
-    const signature = `${item.role}|${item.timestamp}|${item.text}`;
-    if (signature === previous) {
-      return false;
-    }
-    previous = signature;
-    return true;
-  };
-}
-
-function renderCodexExportMarkdown(inputPath, messages) {
-  const lines = ["# Codex Session Export", "", `Source: \`${inputPath}\``, `Entries: ${messages.length}`, ""];
-  for (const item of messages) {
-    lines.push(`## ${item.role.toUpperCase()}${item.timestamp ? ` · ${item.timestamp}` : ""}`);
-    lines.push("");
-    lines.push(item.text);
-    lines.push("");
-  }
-  return lines.join("\n").trim() + "\n";
-}
-
-function renderCodexExportText(inputPath, messages) {
-  const lines = ["Codex Session Export", `Source: ${inputPath}`, `Entries: ${messages.length}`, ""];
-  for (const item of messages) {
-    lines.push(`[${item.timestamp || "no-timestamp"}] ${item.role.toUpperCase()}`);
-    lines.push(item.text);
-    lines.push("");
-  }
-  return lines.join("\n").trim() + "\n";
-}
-
-function buildCodexExportBlocks(result) {
-  const summaryLines = [
-    `Source: ${result.inputPath}`,
-    `Entries: ${result.count}`,
-    `Format: ${result.format}`,
-  ];
-
-  return [
-    headingBlock("Summary"),
-    ...chunkText(summaryLines.join("\n"), 1800).map(paragraphBlock),
-    headingBlock("Transcript"),
-    ...chunkText(result.rendered, 1800).map(paragraphBlock),
-  ];
+  return runLatestCodexExport(argv, {
+    stripAnsi,
+    walkFiles,
+    codexSessionsDir: CONFIG.codexSessionsDir,
+  });
 }
 
 async function uploadCodexExportToNotion(result) {
-  const page = await notionRequest("/v1/pages", {
-    method: "POST",
-    body: {
-      parent: {
-        database_id: CONFIG.notionDatabaseId,
-      },
-      properties: {
-        [CONFIG.notionTitleProperty]: {
-          title: [{ text: { content: result.title } }],
-        },
-      },
-    },
+  return uploadCodexExportToNotionCore(result, CONFIG, notionRequest, {
+    headingBlock,
+    paragraphBlock,
+    chunkText,
   });
+}
 
-  await replacePageBlocks(page.id, buildCodexExportBlocks(result));
-  return page.id;
+function buildCodexExportBlocks(result) {
+  return buildCodexExportBlocksCore(result, { headingBlock, paragraphBlock, chunkText });
 }
 
 async function uploadCodexExportToRemote(result) {
-  if (!CONFIG.remoteApiUrl) {
-    throw new Error("Missing NOTION_SYNC_API_URL for remote upload.");
-  }
-
-  const payload = {
-    title: result.title,
-    userLabel: CONFIG.remoteUserLabel,
-    source: CONFIG.remoteSource,
-    summary: `Codex export entries: ${result.count}`,
-    codexText: result.rendered,
-    terminalText: "",
-    shellText: "",
-  };
-
-  const response = await fetch(CONFIG.remoteApiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const remoteResult = await response.json().catch(() => ({}));
-  if (!response.ok || !remoteResult.ok) {
-    throw new Error(remoteResult.error || `Remote upload failed (${response.status}).`);
-  }
-
-  return remoteResult;
+  return uploadCodexExportToRemoteCore(result, CONFIG);
 }
 
 function checkPath(name, targetPath) {
