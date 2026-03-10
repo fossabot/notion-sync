@@ -13,6 +13,7 @@ const {
   createNotionRequest,
   createBlocks: createNotionBlocks,
   buildCodexExportBlocks: buildCodexExportBlocksCore,
+  replacePageBlocks: replacePageBlocksCore,
   headingBlock,
   paragraphBlock,
   chunkText,
@@ -522,6 +523,10 @@ async function uploadReportToRemote(report) {
 
 async function upsertDailyPage(report) {
   return upsertDailyPageCore(report, CONFIG, notionRequest);
+}
+
+async function replacePageBlocks(pageId, blocks) {
+  return replacePageBlocksCore(pageId, blocks, notionRequest);
 }
 
 function walkFiles(directory) {
