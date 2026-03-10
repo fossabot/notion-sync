@@ -15,6 +15,16 @@ It is designed for people who want:
 - Flexible delivery: send directly to Notion or to a remote API
 - Automation-friendly: works with cron, CI, and hosted intake workflows
 
+## What's New In 1.2.0
+
+- Readable Codex session exports with `export-codex`
+- Automatic newest-session export with `export-codex-latest`
+- Direct delivery with `--send-to-notion`
+- Hosted intake delivery with `--send-remote`
+- Batch export support with `--latest N`
+- Cleaner destinations with `--output-dir`
+- Internal modular refactor for better maintainability
+
 ## Install
 
 ```bash
@@ -156,8 +166,12 @@ Suggested screenshots for the repository:
 - CLI `doctor` output
 - CLI `report` preview
 - successful `remote` upload response
+- readable Codex export output
+- batch Codex export run
 
 Recommended asset paths:
 - `docs/screenshots/cli-doctor.png`
 - `docs/screenshots/cli-report.png`
 - `docs/screenshots/cli-remote.png`
+- `docs/screenshots/cli-codex-export.png`
+- `docs/screenshots/cli-codex-batch.png`
