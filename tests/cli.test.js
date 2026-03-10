@@ -182,6 +182,70 @@ async function testDestinationDispatcher() {
   assert.equal(result.outputPath, "/tmp/export.md");
 }
 
+async function testSupabaseDestinationFlow() {
+  process.env.SUPABASE_URL = "http://127.0.0.1:45233";
+  process.env.SUPABASE_KEY = "supabase_test_key";
+  process.env.SUPABASE_TABLE = "session_exports";
+  process.env.NOTION_SYNC_USER_LABEL = "integration-user";
+  const cliWithSupabase = loadCli();
+
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      const payload = JSON.parse(body);
+      assert.equal(req.url, "/rest/v1/session_exports");
+      assert.equal(payload.user_label, "integration-user");
+      assert.equal(payload.destination, "supabase");
+      assert.equal(payload.session_count, 2);
+      assert.match(payload.content_markdown, /Codex Session Export/);
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(JSON.stringify([{ id: "row_123" }]));
+    });
+  });
+
+  await new Promise((resolve) => server.listen(45233, "127.0.0.1", resolve));
+
+  try {
+    const result = await cliWithSupabase.deliverCodexExport(
+      {
+        destination: "supabase",
+        title: "Codex Session Export sample",
+        count: 2,
+        format: "markdown",
+        rendered: "# Codex Session Export\n\nHallo",
+        outputPath: "/tmp/export.md",
+        inputPath: "/tmp/session-2.jsonl",
+        inputPaths: ["/tmp/session-1.jsonl", "/tmp/session-2.jsonl"],
+      },
+      {
+        config: {
+          supabaseUrl: process.env.SUPABASE_URL,
+          supabaseKey: process.env.SUPABASE_KEY,
+          supabaseTable: process.env.SUPABASE_TABLE,
+          remoteUserLabel: process.env.NOTION_SYNC_USER_LABEL,
+        },
+        toNotion: async () => "page_1",
+        toRemote: async () => ({ ok: true, url: "https://example.com/remote" }),
+        getNotionPageUrl: (pageId) => `https://example.com/${pageId}`,
+      }
+    );
+
+    assert.equal(result.destination, "supabase");
+    assert.equal(result.rowId, "row_123");
+    assert.equal(result.table, "session_exports");
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_KEY;
+    delete process.env.SUPABASE_TABLE;
+    delete process.env.NOTION_SYNC_USER_LABEL;
+    loadCli();
+  }
+}
+
 function testBuildCodexExportBlocks() {
   const blocks = cli.buildCodexExportBlocks({
     inputPath: "/tmp/session.jsonl",
@@ -292,6 +356,7 @@ async function run() {
   await testDestinationDispatcher();
   await testRemoteUploadFlow();
   await testRemoteCodexExportFlow();
+  await testSupabaseDestinationFlow();
   console.log("cli.test.js passed");
 }
 

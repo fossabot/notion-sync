@@ -140,6 +140,7 @@ notion-sync export-codex-latest --latest 5 --output-dir ./exports
 notion-sync export-codex-latest --destination file --output-dir ./exports
 notion-sync export-codex-latest --destination notion
 notion-sync export-codex-latest --destination remote
+notion-sync export-codex-latest --destination supabase
 notion-sync export-codex-latest --send-to-notion
 notion-sync export-codex-latest --send-remote
 ```
@@ -157,8 +158,17 @@ notion-sync export-codex-latest --latest 5 --output-dir ./exports
 notion-sync export-codex-latest --destination file --output-dir ./exports
 notion-sync export-codex-latest --destination notion
 notion-sync export-codex-latest --destination remote
+notion-sync export-codex-latest --destination supabase
 notion-sync export-codex-latest --send-to-notion
 notion-sync export-codex-latest --send-remote
+```
+
+For Supabase add:
+
+```bash
+export SUPABASE_URL="https://your-project.supabase.co"
+export SUPABASE_KEY="your_supabase_key"
+export SUPABASE_TABLE="session_exports"
 ```
 
 This is useful when you want a human-readable chronology before sending the content to Notion.

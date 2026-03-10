@@ -58,6 +58,9 @@ const CONFIG = {
   remoteApiUrl: process.env.NOTION_SYNC_API_URL || "",
   remoteUserLabel: process.env.NOTION_SYNC_USER_LABEL || os.userInfo().username || "unknown-user",
   remoteSource: process.env.NOTION_SYNC_SOURCE || "notion-sync CLI",
+  supabaseUrl: process.env.SUPABASE_URL || "",
+  supabaseKey: process.env.SUPABASE_KEY || "",
+  supabaseTable: process.env.SUPABASE_TABLE || "session_exports",
 };
 
 const SECRET_PATTERNS = [
@@ -95,6 +98,7 @@ async function main() {
       ensureLocalNotionConfig();
     }
     const delivery = await deliverCodexExport(result, {
+      config: CONFIG,
       toNotion: uploadCodexExportToNotion,
       toRemote: uploadCodexExportToRemote,
       getNotionPageUrl,
@@ -107,6 +111,10 @@ async function main() {
       console.log(`Exported ${result.count} entries to ${result.outputPath} and sent to remote ${delivery.url || "(no url returned)"}`);
       return;
     }
+    if (delivery.destination === "supabase") {
+      console.log(`Exported ${result.count} entries to ${result.outputPath} and inserted into Supabase table ${delivery.table}`);
+      return;
+    }
     console.log(`Exported ${result.count} entries to ${result.outputPath}`);
     return;
   }
@@ -117,6 +125,7 @@ async function main() {
       ensureLocalNotionConfig();
     }
     const delivery = await deliverCodexExport(result, {
+      config: CONFIG,
       toNotion: uploadCodexExportToNotion,
       toRemote: uploadCodexExportToRemote,
       getNotionPageUrl,
@@ -127,6 +136,10 @@ async function main() {
     }
     if (delivery.destination === "remote") {
       console.log(`Exported ${result.count} entries from ${result.inputPath} to ${result.outputPath} and sent to remote ${delivery.url || "(no url returned)"}`);
+      return;
+    }
+    if (delivery.destination === "supabase") {
+      console.log(`Exported ${result.count} entries from ${result.inputPath} to ${result.outputPath} and inserted into Supabase table ${delivery.table}`);
       return;
     }
     console.log(`Exported ${result.count} entries from ${result.inputPath} to ${result.outputPath}`);
@@ -228,8 +241,8 @@ function getHelpText() {
     "  notion-sync report   Preview the next upload in the terminal",
     "  notion-sync open     Print the last synced Notion page URL",
     "  notion-sync remote   Send the current report to a remote API",
-    "  notion-sync export-codex <session.jsonl> [--output file] [--output-dir dir] [--format markdown|text] [--roles user,assistant] [--destination file|notion|remote]",
-    "  notion-sync export-codex-latest [--output file] [--output-dir dir] [--latest N] [--format markdown|text] [--roles user,assistant] [--destination file|notion|remote]",
+    "  notion-sync export-codex <session.jsonl> [--output file] [--output-dir dir] [--format markdown|text] [--roles user,assistant] [--destination file|notion|remote|supabase]",
+    "  notion-sync export-codex-latest [--output file] [--output-dir dir] [--latest N] [--format markdown|text] [--roles user,assistant] [--destination file|notion|remote|supabase]",
     "  notion-sync dry-run  Build the next report without uploading",
     "  notion-sync run      Upload the next report to Notion",
     "",
@@ -239,6 +252,10 @@ function getHelpText() {
     `  ${CONFIG.stateFile}`,
     "Remote API URL env:",
     "  NOTION_SYNC_API_URL",
+    "Supabase envs:",
+    "  SUPABASE_URL",
+    "  SUPABASE_KEY",
+    "  SUPABASE_TABLE",
     "",
     "npm scripts still work:",
     "  npm run help | status | report | open | dry-run | run",
@@ -599,11 +616,15 @@ function runDoctor() {
       CONFIG.remoteUserLabel || "missing"
     )
   );
+  checks.push(checkValue("supabase.url", Boolean(CONFIG.supabaseUrl), CONFIG.supabaseUrl || "missing"));
+  checks.push(checkValue("supabase.key", Boolean(CONFIG.supabaseKey), CONFIG.supabaseKey ? "set" : "missing"));
+  checks.push(checkValue("supabase.table", Boolean(CONFIG.supabaseTable), CONFIG.supabaseTable || "missing"));
 
   const requiredFailures = checks.filter(
     (item) =>
       !item.ok &&
-      !item.name.startsWith("remote.")
+      !item.name.startsWith("remote.") &&
+      !item.name.startsWith("supabase.")
   );
   const ok = requiredFailures.length === 0;
   return {
