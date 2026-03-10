@@ -171,6 +171,22 @@ This sends the current collected report to the remote API. The Vercel app can th
 
 ## Screenshots
 
+### Doctor Check
+
+![Doctor Check](docs/screenshots/cli-doctor.png)
+
+### Report Preview
+
+![Report Preview](docs/screenshots/cli-report.png)
+
+### Readable Codex Export
+
+![Readable Codex Export](docs/screenshots/cli-codex-export.png)
+
+### Batch Codex Export
+
+![Batch Codex Export](docs/screenshots/cli-codex-batch.png)
+
 Suggested screenshots for the repository:
 - CLI `doctor` output
 - CLI `report` preview
