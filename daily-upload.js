@@ -64,12 +64,26 @@ async function main() {
 
   if (EXPORT_CODEX_ONLY) {
     const result = exportCodexSession(args.slice(1));
+    if (result.sendToNotion) {
+      ensureLocalNotionConfig();
+      const pageId = await uploadCodexExportToNotion(result);
+      console.log(`Exported ${result.count} entries to ${result.outputPath} and uploaded to ${getNotionPageUrl(pageId)}`);
+      return;
+    }
     console.log(`Exported ${result.count} entries to ${result.outputPath}`);
     return;
   }
 
   if (EXPORT_CODEX_LATEST_ONLY) {
     const result = exportLatestCodexSession(args.slice(1));
+    if (result.sendToNotion) {
+      ensureLocalNotionConfig();
+      const pageId = await uploadCodexExportToNotion(result);
+      console.log(
+        `Exported ${result.count} entries from ${result.inputPath} to ${result.outputPath} and uploaded to ${getNotionPageUrl(pageId)}`
+      );
+      return;
+    }
     console.log(`Exported ${result.count} entries from ${result.inputPath} to ${result.outputPath}`);
     return;
   }
@@ -169,8 +183,8 @@ function getHelpText() {
     "  notion-sync report   Preview the next upload in the terminal",
     "  notion-sync open     Print the last synced Notion page URL",
     "  notion-sync remote   Send the current report to a remote API",
-    "  notion-sync export-codex <session.jsonl> [--output file] [--format markdown|text] [--roles user,assistant]",
-    "  notion-sync export-codex-latest [--output file] [--format markdown|text] [--roles user,assistant]",
+    "  notion-sync export-codex <session.jsonl> [--output file] [--format markdown|text] [--roles user,assistant] [--send-to-notion]",
+    "  notion-sync export-codex-latest [--output file] [--format markdown|text] [--roles user,assistant] [--send-to-notion]",
     "  notion-sync dry-run  Build the next report without uploading",
     "  notion-sync run      Upload the next report to Notion",
     "",
@@ -826,7 +840,7 @@ function exportCodexSession(argv) {
   const options = parseCodexExportArgs(argv);
   if (options.help || !options.input) {
     throw new Error(
-      "Usage: notion-sync export-codex <session.jsonl> [--output file] [--format markdown|text] [--roles user,assistant]"
+      "Usage: notion-sync export-codex <session.jsonl> [--output file] [--format markdown|text] [--roles user,assistant] [--send-to-notion]"
     );
   }
 
@@ -859,7 +873,16 @@ function exportCodexSession(argv) {
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, rendered);
-  return { outputPath, count: messages.length };
+  return {
+    inputPath,
+    outputPath,
+    count: messages.length,
+    messages,
+    format: options.format,
+    rendered,
+    sendToNotion: Boolean(options.sendToNotion),
+    title: options.title || buildCodexExportTitle(inputPath),
+  };
 }
 
 function exportLatestCodexSession(argv) {
@@ -874,9 +897,8 @@ function exportLatestCodexSession(argv) {
   const latestFile = files[files.length - 1];
   const result = exportCodexSession([latestFile, ...argv]);
   return {
+    ...result,
     inputPath: latestFile,
-    outputPath: result.outputPath,
-    count: result.count,
   };
 }
 
@@ -903,11 +925,24 @@ function parseCodexExportArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--send-to-notion") {
+      options.sendToNotion = true;
+      continue;
+    }
+    if (arg === "--title") {
+      options.title = argv[index + 1];
+      index += 1;
+      continue;
+    }
     if (!options.input) {
       options.input = arg;
     }
   }
   return options;
+}
+
+function buildCodexExportTitle(inputPath) {
+  return `Codex Session Export ${path.basename(inputPath, path.extname(inputPath))}`;
 }
 
 function buildCodexExportOutputPath(inputPath, format) {
@@ -1008,6 +1043,40 @@ function renderCodexExportText(inputPath, messages) {
   return lines.join("\n").trim() + "\n";
 }
 
+function buildCodexExportBlocks(result) {
+  const summaryLines = [
+    `Source: ${result.inputPath}`,
+    `Entries: ${result.count}`,
+    `Format: ${result.format}`,
+  ];
+
+  return [
+    headingBlock("Summary"),
+    ...chunkText(summaryLines.join("\n"), 1800).map(paragraphBlock),
+    headingBlock("Transcript"),
+    ...chunkText(result.rendered, 1800).map(paragraphBlock),
+  ];
+}
+
+async function uploadCodexExportToNotion(result) {
+  const page = await notionRequest("/v1/pages", {
+    method: "POST",
+    body: {
+      parent: {
+        database_id: CONFIG.notionDatabaseId,
+      },
+      properties: {
+        [CONFIG.notionTitleProperty]: {
+          title: [{ text: { content: result.title } }],
+        },
+      },
+    },
+  });
+
+  await replacePageBlocks(page.id, buildCodexExportBlocks(result));
+  return page.id;
+}
+
 function checkPath(name, targetPath) {
   return {
     name,
@@ -1042,4 +1111,5 @@ module.exports = {
   uploadReportToRemote,
   exportCodexSession,
   exportLatestCodexSession,
+  buildCodexExportBlocks,
 };

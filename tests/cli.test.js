@@ -90,6 +90,7 @@ function testExportCodexSession() {
   const content = fs.readFileSync(outputFile, "utf8");
   assert.match(content, /Hallo Welt/);
   assert.match(content, /Antwort Text/);
+  assert.equal(result.title, "Codex Session Export session");
 }
 
 function testExportLatestCodexSession() {
@@ -127,6 +128,18 @@ function testExportLatestCodexSession() {
 
   delete process.env.CODEX_SESSIONS_DIR;
   loadCli();
+}
+
+function testBuildCodexExportBlocks() {
+  const blocks = cli.buildCodexExportBlocks({
+    inputPath: "/tmp/session.jsonl",
+    count: 2,
+    format: "markdown",
+    rendered: "# Codex Session Export\n\nHallo",
+  });
+  assert.equal(blocks[0].type, "heading_2");
+  assert.equal(blocks[1].type, "paragraph");
+  assert.equal(blocks[2].type, "heading_2");
 }
 
 async function testRemoteUploadFlow() {
@@ -181,6 +194,7 @@ async function run() {
   testDoctorShape();
   testExportCodexSession();
   testExportLatestCodexSession();
+  testBuildCodexExportBlocks();
   await testRemoteUploadFlow();
   console.log("cli.test.js passed");
 }
