@@ -43,6 +43,9 @@ Package:
 Repository:
 - `https://github.com/jozrftamson/notion-sync`
 
+Support / Sponsor:
+- `https://github.com/sponsors/jozrftamson`
+
 Release notes:
 - `docs/release-notes-1.2.0.md`
 

@@ -1,6 +1,6 @@
 {
   "name": "@joseftmson/notion-sync",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "commonjs",
   "description": "Daily Codex and terminal log sync to Notion with encrypted local state.",
   "author": "Josef",
@@ -12,6 +12,10 @@
   },
   "bugs": {
     "url": "https://github.com/jozrftamson/notion-sync/issues"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/jozrftamson"
   },
   "files": [
     "daily-upload.js",
