@@ -4,6 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/%40joseftmson%2Fnotion-sync)](https://www.npmjs.com/package/@joseftmson/notion-sync)
 [![CI](https://img.shields.io/github/actions/workflow/status/jozrftamson/notion-sync/npm-publish.yml?branch=main&label=publish)](https://github.com/jozrftamson/notion-sync/actions)
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/jozrftamson/notion-sync?utm_source=badge)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fjozrftamson%2Fnotion-sync.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fjozrftamson%2Fnotion-sync?ref=badge_shield)
 
 `notion-sync` is a local-first CLI for turning Codex sessions, terminal logs, and shell history into structured Notion documentation.
 
@@ -228,3 +229,7 @@ See `CONTRIBUTING.md` for local setup and contribution guidance.
 ## Security
 
 See `SECURITY.md` for responsible reporting guidance.
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fjozrftamson%2Fnotion-sync.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fjozrftamson%2Fnotion-sync?ref=badge_large)
